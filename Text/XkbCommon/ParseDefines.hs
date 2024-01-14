@@ -27,6 +27,9 @@ import Control.Arrow
 -- to a header file is.
 readHeader :: String -> IO (String, String)
 readHeader str = do
+  print $ "read header, string:" ++ str
+  -- it is using the wrapped cpp that nix creates
+  -- which_cpp <- readProcess "which" ["cpp"] ""
   cpp_out <- readProcess "cpp" [] ("#include<" ++ str ++ ">")
   -- parse output:
   let headerfile = read $ head $ map ((!! 2) . words) (filter (isInfixOf str) $ lines cpp_out)
@@ -53,14 +56,21 @@ genKeycodes = do
    (headerFilename, keysyms_header) <- readHeader "linux/input.h"
    preprocessed <- cppIfdef headerFilename [] [] defaultBoolOptions keysyms_header
    putStrLn "preprocessed"
+   print $ "num preprocessed" ++ (show . length) preprocessed
+   -- mapM_ print preprocessed
    (_, defs) <- macroPassReturningSymTab [] defaultBoolOptions preprocessed
+   putStrLn "defs"
+   mapM_ print defs
    let exclude_defs = []
    let filtered_defs = filter (\ (name, val) -> isPrefixOf "KEY_" name && notElem name exclude_defs && isJust (maybeRead val :: Maybe Int)) defs
    putStrLn "filtered defs"
+   mapM_ print filtered_defs
    let parsed_defs = map (drop 4 *** read) filtered_defs
    putStrLn "parsed_defs"
    mapM_ print parsed_defs
-   return $ map (\ (name, val) -> ValD (VarP $ mkName ("keycode_" ++ lowerCase name)) (NormalB (AppE (ConE $ mkName "CKeycode") $ LitE (IntegerL (8 + val)))) []) parsed_defs
+   let keycodes = map (\ (name, val) -> ValD (VarP $ mkName ("keycode_" ++ lowerCase name)) (NormalB (AppE (ConE $ mkName "CKeycode") $ LitE (IntegerL (8 + val)))) []) parsed_defs
+   print $ "keycodes" ++ show keycodes
+   return keycodes
 
 genModnames :: IO [Dec]
 -- genKeycodes = return []
