@@ -1,7 +1,14 @@
 module Text.XkbCommon.ParseDefines
    ( readHeader, getKeysymDefs, genKeysyms, genKeycodes, genModnames ) where
 
-import Language.Haskell.TH
+import Language.Haskell.TH (
+    Dec(ValD)
+    , Exp(LitE, AppE, ConE, VarE)
+    , mkName
+    , Pat(..)
+    , Lit(..)
+    , Body(NormalB)
+    )
 import Language.Preprocessor.Cpphs
 import System.Process
 import Data.List
@@ -9,12 +16,21 @@ import Data.Maybe (isJust)
 import Data.Text (pack, unpack, toLower)
 import Control.Arrow
 
--- this function calls the c preprocessor to find out what the full path to a header file is.
+--input.h tries to find
+
+-- #include <sys/time.h>
+-- #include <sys/ioctl.h>
+-- #include <sys/types.h>
+-- #include <linux/types.h>
+
+-- this function calls the c preprocessor to find what the full path
+-- to a header file is.
 readHeader :: String -> IO (String, String)
 readHeader str = do
   cpp_out <- readProcess "cpp" [] ("#include<" ++ str ++ ">")
   -- parse output:
   let headerfile = read $ head $ map ((!! 2) . words) (filter (isInfixOf str) $ lines cpp_out)
+  print $ intercalate " " ["for", str, "I found", show headerfile]
   header <- readFile headerfile
   return (headerfile, header)
 
@@ -36,10 +52,14 @@ genKeycodes :: IO [Dec]
 genKeycodes = do
    (headerFilename, keysyms_header) <- readHeader "linux/input.h"
    preprocessed <- cppIfdef headerFilename [] [] defaultBoolOptions keysyms_header
+   putStrLn "preprocessed"
    (_, defs) <- macroPassReturningSymTab [] defaultBoolOptions preprocessed
    let exclude_defs = []
    let filtered_defs = filter (\ (name, val) -> isPrefixOf "KEY_" name && notElem name exclude_defs && isJust (maybeRead val :: Maybe Int)) defs
+   putStrLn "filtered defs"
    let parsed_defs = map (drop 4 *** read) filtered_defs
+   putStrLn "parsed_defs"
+   mapM_ print parsed_defs
    return $ map (\ (name, val) -> ValD (VarP $ mkName ("keycode_" ++ lowerCase name)) (NormalB (AppE (ConE $ mkName "CKeycode") $ LitE (IntegerL (8 + val)))) []) parsed_defs
 
 genModnames :: IO [Dec]
