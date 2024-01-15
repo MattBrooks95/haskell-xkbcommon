@@ -9,6 +9,7 @@ import Language.Haskell.TH (
     , Lit(..)
     , Body(NormalB)
     )
+import System.Environment (getEnv)
 import Language.Preprocessor.Cpphs
 import System.Process
 import Data.List
@@ -51,9 +52,13 @@ genKeysyms = do
    parsed_defs <- getKeysymDefs
    return $ map (\ (name, val) -> ValD (VarP $ mkName ("keysym_" ++ name)) (NormalB (AppE (VarE $ mkName "toKeysym") (AppE (ConE $ mkName "CKeysym") $ LitE (IntegerL val)))) []) parsed_defs
 
+-- https://github.com/malcolmwallace/cpphs/issues/16
+-- https://github.com/NixOS/nixpkgs/issues/63933
 genKeycodes :: IO [Dec]
 genKeycodes = do
    (headerFilename, keysyms_header) <- readHeader "linux/input.h"
+   print keysyms_header
+   writeFile "./keysyms_out.txt" keysyms_header
    preprocessed <- cppIfdef headerFilename [] [] defaultBoolOptions keysyms_header
    putStrLn "preprocessed"
    print $ "num preprocessed" ++ (show . length) preprocessed
